@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { resolve } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { ToolMessage, type BaseMessage } from '@langchain/core/messages';
@@ -13,7 +14,7 @@ import { CodexExecModelPort, CodexModelPortError } from '../model/codex-exec-mod
 import { parseJsonWithoutDuplicateKeys } from './unique-json.js';
 import { classifyExp001BridgeFailure, classifyExp001BridgeToolFailure } from './exp001-bridge-failure.js';
 
-const WIRE_VERSION = 'exp001_shared_wire_v2';
+const WIRE_VERSION = 'exp001_shared_wire_v3';
 const READ_INPUT_TOOL = 'exp001.read_trial_input';
 const CORE_TOOL = 'dexter_core.evaluate';
 const MAX_FROZEN_INPUT_CHARS = 180_000;
@@ -23,7 +24,7 @@ interface FrozenInput extends Record<string, unknown> {
   readonly asOf: string;
   readonly candidates: readonly { readonly ticker: string }[];
 }
-const SCHEMA_PATH = new URL('./exp001-shared-wire-v2.schema.json', import.meta.url);
+const SCHEMA_PATH = new URL('./exp001-shared-wire-v3.schema.json', import.meta.url);
 const READ_INPUT_SCHEMA = z.object({ trialId: z.string(), inputHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
 const CORE_SCHEMA = z.object({ trialId: z.string(), inputHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
 
@@ -59,6 +60,37 @@ interface CoreResponse extends Record<string, unknown> {
   readonly trialId: string;
   readonly inputHash: string;
   readonly decision: Record<string, unknown>;
+}
+
+interface ModelCallTelemetry extends Record<string, unknown> {
+  readonly ordinal: number;
+  readonly requestSha256: string;
+  readonly inputSnapshotIncluded: boolean;
+  readonly inputSnapshotSha256: string | null;
+  readonly coreResultIncluded: boolean;
+  readonly coreResultSha256: string | null;
+  readonly status: 'completed' | 'failed';
+  readonly startedAt: string;
+  readonly finishedAt: string;
+  readonly elapsedMs: number;
+  readonly usageStatus: 'observed' | 'unavailable';
+  readonly inputTokens: number | null;
+  readonly outputTokens: number | null;
+  readonly failureKind: CodexModelPortError['kind'] | null;
+}
+
+interface CoreRpcTelemetry extends Record<string, unknown> {
+  readonly status: 'completed' | 'failed';
+  readonly startedAt: string;
+  readonly finishedAt: string;
+  readonly elapsedMs: number;
+}
+
+interface BridgeTelemetry {
+  coreRpc: CoreRpcTelemetry | null;
+  coreDecisionHash: string | null;
+  coreToolCallCount: number;
+  readonly toolNames: string[];
 }
 
 export class JsonLineReader {
@@ -300,12 +332,11 @@ function coreResultHash(messages: readonly BaseMessage[]): string | null {
   return parsed.decisionHash;
 }
 
-async function runBridge(start: StartMessage, inputReader: JsonLineReader): Promise<Record<string, unknown>> {
-  const modelCalls: Record<string, unknown>[] = [];
-  const toolNames: string[] = [];
+async function runBridge(start: StartMessage, inputReader: JsonLineReader,
+  modelCalls: ModelCallTelemetry[], telemetry: BridgeTelemetry): Promise<Record<string, unknown>> {
+  const toolNames = telemetry.toolNames;
   let inputReadCount = 0;
-  let coreToolCallCount = 0;
-  let coreResponseHash: string | null = null;
+  let coreToolCallCount = telemetry.coreToolCallCount;
   let modelPortFailure: CodexModelPortError['kind'] | null = null;
   const remainingMs = Date.parse(start.deadlineAt) - Date.now();
   if (remainingMs <= 0) throw new Error('deadline_exceeded');
@@ -324,17 +355,30 @@ async function runBridge(start: StartMessage, inputReader: JsonLineReader): Prom
       if (modelCalls.length >= start.maxIterations) throw new Error('agent_model_turn_limit');
       const includedCoreHash = coreResultHash(input.messages);
       const includedInputHash = inputSnapshotHash(input.messages, start);
+      const ordinal = modelCalls.length + 1;
+      const startedAt = new Date().toISOString();
+      const startedClock = performance.now();
+      const requestSha256 = messageDigest(input.messages);
+      const common = { ordinal, requestSha256, inputSnapshotIncluded: includedInputHash !== null,
+        inputSnapshotSha256: includedInputHash, coreResultIncluded: includedCoreHash !== null,
+        coreResultSha256: includedCoreHash, startedAt };
       let result;
       try { result = await basePort.invoke({ ...input, signal: controller.signal }); }
       catch (error) {
         modelPortFailure = error instanceof CodexModelPortError ? error.kind : 'operational';
+        const finishedAt = new Date().toISOString();
+        modelCalls.push({ ...common, status: 'failed', finishedAt,
+          elapsedMs: Math.max(0, Math.round(performance.now() - startedClock)), usageStatus: 'unavailable',
+          inputTokens: null, outputTokens: null, failureKind: modelPortFailure });
         throw error;
       }
+      const finishedAt = new Date().toISOString();
+      modelCalls.push({ ...common, status: 'completed', finishedAt,
+        elapsedMs: Math.max(0, Math.round(performance.now() - startedClock)),
+        usageStatus: result.usage ? 'observed' : 'unavailable',
+        inputTokens: result.usage?.inputTokens ?? null, outputTokens: result.usage?.outputTokens ?? null,
+        failureKind: null });
       if (!result.usage) throw new Error('agent_usage_missing');
-      modelCalls.push({ ordinal: modelCalls.length + 1, requestSha256: messageDigest(input.messages),
-        inputSnapshotIncluded: includedInputHash !== null, inputSnapshotSha256: includedInputHash,
-        coreResultIncluded: includedCoreHash !== null, coreResultSha256: includedCoreHash,
-        inputTokens: result.usage.inputTokens, outputTokens: result.usage.outputTokens });
       return result;
     },
   };
@@ -358,17 +402,28 @@ async function runBridge(start: StartMessage, inputReader: JsonLineReader): Prom
       description: 'Request the deterministic Dexter Core decision for this exact trial and frozen input.',
       schema: CORE_SCHEMA,
       func: async (args) => {
-        if (args.trialId !== start.trialId || args.inputHash !== start.inputHash || ++coreToolCallCount !== 1) {
+        if (args.trialId !== start.trialId || args.inputHash !== start.inputHash || coreToolCallCount !== 0) {
           throw new Error('core_tool_request_invalid');
         }
+        coreToolCallCount = 1;
+        telemetry.coreToolCallCount = coreToolCallCount;
         const requestId = `${start.runId}-core-1`;
-        sendWireMessage({ type: 'core_request', schemaVersion: WIRE_VERSION,
-          wireSchemaSha256: start.wireSchemaSha256, runId: start.runId, requestId,
-          trialId: start.trialId, inputHash: start.inputHash });
-        const response = parseJsonLine(await inputReader.next());
-        assertCoreResponse(response, start, requestId);
-        coreResponseHash = response.decision.decisionHash as string;
-        return JSON.stringify(response.decision);
+        const startedAt = new Date().toISOString();
+        const startedClock = performance.now();
+        let status: 'completed' | 'failed' = 'failed';
+        try {
+          sendWireMessage({ type: 'core_request', schemaVersion: WIRE_VERSION,
+            wireSchemaSha256: start.wireSchemaSha256, runId: start.runId, requestId,
+            trialId: start.trialId, inputHash: start.inputHash });
+          const response = parseJsonLine(await inputReader.next());
+          assertCoreResponse(response, start, requestId);
+          telemetry.coreDecisionHash = response.decision.decisionHash as string;
+          status = 'completed';
+          return JSON.stringify(response.decision);
+        } finally {
+          telemetry.coreRpc = { status, startedAt, finishedAt: new Date().toISOString(),
+            elapsedMs: Math.max(0, Math.round(performance.now() - startedClock)) };
+        }
       },
     }));
   }
@@ -405,7 +460,7 @@ async function runBridge(start: StartMessage, inputReader: JsonLineReader): Prom
     const finalValue = parseJsonLine(finalAnswer);
     if (!isRecord(finalValue) || Object.keys(finalValue).length !== 2
       || !Array.isArray(finalValue.preferences)
-      || finalValue.coreDecisionHash !== (start.arm === 'AB' ? coreResponseHash : null)) {
+      || finalValue.coreDecisionHash !== (start.arm === 'AB' ? telemetry.coreDecisionHash : null)) {
       throw new Error('agent_final_response_invalid');
     }
     const tickers = new Set(start.input.candidates.map((candidate) => (candidate as Record<string, unknown>).ticker));
@@ -417,13 +472,13 @@ async function runBridge(start: StartMessage, inputReader: JsonLineReader): Prom
       seen.add(item.ticker);
     }
     if (seen.size !== tickers.size) throw new Error('agent_preferences_incomplete');
-    const firstCall = modelCalls[0] as { coreResultIncluded: boolean; coreResultSha256: string | null };
-    const finalCall = modelCalls[1] as { coreResultIncluded: boolean; coreResultSha256: string | null };
+    const firstCall = modelCalls[0]!;
+    const finalCall = modelCalls[1]!;
     if (firstCall.inputSnapshotIncluded || firstCall.inputSnapshotSha256 !== null
       || finalCall.inputSnapshotIncluded !== true || finalCall.inputSnapshotSha256 !== start.inputHash
       || firstCall.coreResultIncluded || firstCall.coreResultSha256 !== null
       || finalCall.coreResultIncluded !== (start.arm === 'AB')
-      || finalCall.coreResultSha256 !== (start.arm === 'AB' ? coreResponseHash : null)) {
+      || finalCall.coreResultSha256 !== (start.arm === 'AB' ? telemetry.coreDecisionHash : null)) {
       throw new Error('agent_core_result_not_consumed');
     }
     const usage = modelCalls.reduce((total, call) => ({
@@ -435,8 +490,9 @@ async function runBridge(start: StartMessage, inputReader: JsonLineReader): Prom
       type: 'result', schemaVersion: WIRE_VERSION, wireSchemaSha256: start.wireSchemaSha256,
       runId: start.runId, trialId: start.trialId, arm: start.arm, inputHash: start.inputHash,
       policyHash: start.policyHash, preferences: finalValue.preferences,
-      coreDecisionHash: start.arm === 'AB' ? coreResponseHash : null, coreToolCallCount,
-      modelCalls, toolNames, sourceBaseCommit: identity.baseCommit, sourcePatchSha256: identity.patchSha256,
+      coreDecisionHash: start.arm === 'AB' ? telemetry.coreDecisionHash : null, coreToolCallCount,
+      coreRpc: telemetry.coreRpc, modelCalls, toolNames,
+      sourceBaseCommit: identity.baseCommit, sourcePatchSha256: identity.patchSha256,
       usage: { ...usage, totalTokens: usage.inputTokens + usage.outputTokens },
     };
   } finally {
@@ -449,16 +505,24 @@ async function main(): Promise<void> {
   const reader = new JsonLineReader(process.stdin);
   let runId = 'invalid-request';
   let wireSchemaSha256 = exp001SchemaSha256();
+  let validatedStart: StartMessage | null = null;
+  const modelCalls: ModelCallTelemetry[] = [];
+  const telemetry: BridgeTelemetry = { coreRpc: null, coreDecisionHash: null, coreToolCallCount: 0, toolNames: [] };
   try {
     const start = parseJsonLine(await reader.next());
     if (isRecord(start) && typeof start.runId === 'string') runId = start.runId;
     if (isRecord(start) && typeof start.wireSchemaSha256 === 'string') wireSchemaSha256 = start.wireSchemaSha256;
     assertStart(start);
-    sendWireMessage(await runBridge(start, reader));
+    validatedStart = start;
+    sendWireMessage(await runBridge(start, reader, modelCalls, telemetry));
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
     const reason = classifyExp001BridgeFailure(message);
-    sendWireMessage({ type: 'failure', schemaVersion: WIRE_VERSION, wireSchemaSha256, runId, reason });
+    sendWireMessage({ type: 'failure', schemaVersion: WIRE_VERSION, wireSchemaSha256, runId, reason,
+      sourceBaseCommit: validatedStart?.agentSourceBaseCommit ?? null,
+      sourcePatchSha256: validatedStart?.agentSourcePatchSha256 ?? null,
+      coreDecisionHash: telemetry.coreDecisionHash, coreToolCallCount: telemetry.coreToolCallCount,
+      coreRpc: telemetry.coreRpc, modelCalls, toolNames: telemetry.toolNames });
     process.exitCode = 1;
   }
 }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "urn:dextergarden:exp001:shared-wire:v2",
-  "title": "EXP-001 Original Dexter Agent and Dexter Core shared wire contract v2",
+  "$id": "urn:dextergarden:exp001:shared-wire:v3",
+  "title": "EXP-001 Original Dexter Agent and Dexter Core shared wire contract v3",
   "description": "Line-delimited JSON messages exchanged between the Garden trial runner and the original Dexter Agent process.",
   "$defs": {
     "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
@@ -64,7 +64,7 @@
       "type": "object",
       "properties": {
         "type": { "const": "start" },
-        "schemaVersion": { "const": "exp001_shared_wire_v2" },
+        "schemaVersion": { "const": "exp001_shared_wire_v3" },
         "wireSchemaSha256": { "$ref": "#/$defs/sha256" },
         "runId": { "type": "string", "minLength": 1 },
         "trialId": { "type": "string", "minLength": 1 },
@@ -91,7 +91,7 @@
       "type": "object",
       "properties": {
         "type": { "const": "core_request" },
-        "schemaVersion": { "const": "exp001_shared_wire_v2" },
+        "schemaVersion": { "const": "exp001_shared_wire_v3" },
         "wireSchemaSha256": { "$ref": "#/$defs/sha256" },
         "runId": { "type": "string", "minLength": 1 },
         "requestId": { "type": "string", "minLength": 1 },
@@ -105,7 +105,7 @@
       "type": "object",
       "properties": {
         "type": { "const": "core_response" },
-        "schemaVersion": { "const": "exp001_shared_wire_v2" },
+        "schemaVersion": { "const": "exp001_shared_wire_v3" },
         "wireSchemaSha256": { "$ref": "#/$defs/sha256" },
         "runId": { "type": "string", "minLength": 1 },
         "requestId": { "type": "string", "minLength": 1 },
@@ -134,17 +134,34 @@
         "inputSnapshotSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
         "coreResultIncluded": { "type": "boolean" },
         "coreResultSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
-        "inputTokens": { "type": "integer", "minimum": 0 },
-        "outputTokens": { "type": "integer", "minimum": 0 }
+        "status": { "enum": ["completed", "failed"] },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "finishedAt": { "type": "string", "format": "date-time" },
+        "elapsedMs": { "type": "integer", "minimum": 0 },
+        "usageStatus": { "enum": ["observed", "unavailable"] },
+        "inputTokens": { "type": ["integer", "null"], "minimum": 0 },
+        "outputTokens": { "type": ["integer", "null"], "minimum": 0 },
+        "failureKind": { "enum": ["readiness", "operational", "integrity", null] }
       },
-      "required": ["ordinal", "requestSha256", "inputSnapshotIncluded", "inputSnapshotSha256", "coreResultIncluded", "coreResultSha256", "inputTokens", "outputTokens"],
+      "required": ["ordinal", "requestSha256", "inputSnapshotIncluded", "inputSnapshotSha256", "coreResultIncluded", "coreResultSha256", "status", "startedAt", "finishedAt", "elapsedMs", "usageStatus", "inputTokens", "outputTokens", "failureKind"],
+      "additionalProperties": false
+    },
+    "coreRpc": {
+      "type": "object",
+      "properties": {
+        "status": { "enum": ["completed", "failed"] },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "finishedAt": { "type": "string", "format": "date-time" },
+        "elapsedMs": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["status", "startedAt", "finishedAt", "elapsedMs"],
       "additionalProperties": false
     },
     "result": {
       "type": "object",
       "properties": {
         "type": { "const": "result" },
-        "schemaVersion": { "const": "exp001_shared_wire_v2" },
+        "schemaVersion": { "const": "exp001_shared_wire_v3" },
         "wireSchemaSha256": { "$ref": "#/$defs/sha256" },
         "runId": { "type": "string", "minLength": 1 },
         "trialId": { "type": "string", "minLength": 1 },
@@ -154,6 +171,7 @@
         "preferences": { "type": "array", "items": { "$ref": "#/$defs/preference" } },
         "coreDecisionHash": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
         "coreToolCallCount": { "type": "integer", "minimum": 0 },
+        "coreRpc": { "oneOf": [{ "$ref": "#/$defs/coreRpc" }, { "type": "null" }] },
         "modelCalls": { "type": "array", "items": { "$ref": "#/$defs/modelCall" } },
         "toolNames": { "type": "array", "items": { "type": "string" } },
         "sourceBaseCommit": { "$ref": "#/$defs/sourceCommit" },
@@ -169,19 +187,26 @@
           "additionalProperties": false
         }
       },
-      "required": ["type", "schemaVersion", "wireSchemaSha256", "runId", "trialId", "arm", "inputHash", "policyHash", "preferences", "coreDecisionHash", "coreToolCallCount", "modelCalls", "toolNames", "sourceBaseCommit", "sourcePatchSha256", "usage"],
+      "required": ["type", "schemaVersion", "wireSchemaSha256", "runId", "trialId", "arm", "inputHash", "policyHash", "preferences", "coreDecisionHash", "coreToolCallCount", "coreRpc", "modelCalls", "toolNames", "sourceBaseCommit", "sourcePatchSha256", "usage"],
       "additionalProperties": false
     },
     "failure": {
       "type": "object",
       "properties": {
         "type": { "const": "failure" },
-        "schemaVersion": { "const": "exp001_shared_wire_v2" },
+        "schemaVersion": { "const": "exp001_shared_wire_v3" },
         "wireSchemaSha256": { "$ref": "#/$defs/sha256" },
         "runId": { "type": "string", "minLength": 1 },
-        "reason": { "enum": ["invalid_request", "deadline_exceeded", "readiness_failed", "model_port_failed", "agent_failed", "invalid_result", "core_rpc_failed"] }
+        "reason": { "enum": ["invalid_request", "deadline_exceeded", "readiness_failed", "model_port_failed", "agent_failed", "invalid_result", "core_rpc_failed"] },
+        "sourceBaseCommit": { "oneOf": [{ "$ref": "#/$defs/sourceCommit" }, { "type": "null" }] },
+        "sourcePatchSha256": { "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+        "coreDecisionHash": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "coreToolCallCount": { "type": "integer", "minimum": 0 },
+        "coreRpc": { "oneOf": [{ "$ref": "#/$defs/coreRpc" }, { "type": "null" }] },
+        "modelCalls": { "type": "array", "maxItems": 2, "items": { "$ref": "#/$defs/modelCall" } },
+        "toolNames": { "type": "array", "items": { "type": "string" } }
       },
-      "required": ["type", "schemaVersion", "wireSchemaSha256", "runId", "reason"],
+      "required": ["type", "schemaVersion", "wireSchemaSha256", "runId", "reason", "sourceBaseCommit", "sourcePatchSha256", "coreDecisionHash", "coreToolCallCount", "coreRpc", "modelCalls", "toolNames"],
       "additionalProperties": false
     }
   },
