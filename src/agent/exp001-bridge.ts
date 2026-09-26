@@ -5,7 +5,7 @@ import { createInterface } from 'node:readline';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { DynamicStructuredTool } from '@langchain/core/tools';
+import { DynamicStructuredTool, type StructuredToolInterface } from '@langchain/core/tools';
 import { ToolMessage, type BaseMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import { Agent } from './agent.js';
@@ -22,7 +22,7 @@ interface FrozenInput extends Record<string, unknown> {
   readonly schemaVersion: 'exp001_input_v2';
   readonly trialId: string;
   readonly asOf: string;
-  readonly candidates: readonly { readonly ticker: string }[];
+  readonly candidates: readonly { readonly ticker: string; readonly sector: string }[];
 }
 const SCHEMA_PATH = new URL('./exp001-shared-wire-v3.schema.json', import.meta.url);
 const READ_INPUT_SCHEMA = z.object({ trialId: z.string(), inputHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
@@ -395,7 +395,7 @@ async function runBridge(start: StartMessage, inputReader: JsonLineReader,
     },
   });
 
-  const extraTools = [readTool];
+  const extraTools: StructuredToolInterface[] = [readTool];
   if (start.arm === 'AB') {
     extraTools.push(new DynamicStructuredTool({
       name: CORE_TOOL,

@@ -14,6 +14,7 @@ import {
   parseCodexModelOutput,
   serializeCodexPrompt,
   type CodexToolSpec,
+  type CodexConversationMessage,
 } from '../agent/codex-exec-protocol.js';
 
 const DISABLED_CODEX_FEATURES = [
@@ -77,20 +78,20 @@ async function sha256File(filePath: string): Promise<string> {
   const digest = createHash('sha256');
   await new Promise<void>((resolvePromise, reject) => {
     const stream = createReadStream(filePath);
-    stream.on('data', (chunk: Buffer) => digest.update(chunk));
+    stream.on('data', (chunk) => { digest.update(chunk); });
     stream.on('error', reject);
     stream.on('end', resolvePromise);
   });
   return digest.digest('hex');
 }
 
-function serializeMessages(messages: readonly BaseMessage[]) {
+function serializeMessages(messages: readonly BaseMessage[]): CodexConversationMessage[] {
   return messages.map((message) => {
     const messageType = message._getType();
     const role = messageType === 'human' ? 'user' : messageType;
-    const entry: Record<string, unknown> = { role, content: message.content };
+    const entry: { role: string; content: unknown; name?: string; toolCalls?: readonly unknown[]; toolCallId?: string } = { role, content: message.content };
     if (message.name) entry.name = message.name;
-    if (message instanceof AIMessage && message.tool_calls.length > 0) {
+    if (message instanceof AIMessage && message.tool_calls && message.tool_calls.length > 0) {
       entry.toolCalls = message.tool_calls;
     }
     if (message instanceof ToolMessage) {
@@ -104,7 +105,7 @@ function toToolSpecs(tools: readonly StructuredToolInterface[]): CodexToolSpec[]
   return tools.map((tool) => {
     let inputSchema: unknown;
     try {
-      inputSchema = z.toJSONSchema(tool.schema);
+      inputSchema = z.toJSONSchema(codexToolSchema(tool));
     } catch {
       throw new Error('A Codex ModelPort tool did not expose a JSON-compatible input schema');
     }
@@ -117,6 +118,11 @@ function toToolSpecs(tools: readonly StructuredToolInterface[]): CodexToolSpec[]
       inputSchema: inputSchema as Record<string, unknown>,
     };
   });
+}
+
+function codexToolSchema(tool: StructuredToolInterface): z.ZodType {
+  if (!(tool.schema instanceof z.ZodType)) throw new CodexModelPortError('integrity', 'codex_tool_schema_invalid');
+  return tool.schema;
 }
 
 function toUsage(input: { inputTokens: number; outputTokens: number; totalTokens: number }): TokenUsage {
@@ -181,7 +187,7 @@ export class CodexExecModelPort implements AgentModelPort {
       const toolCalls = parsed.toolCalls.map((call) => {
         const tool = toolMap.get(call.name);
         if (!tool) throw new CodexModelPortError('integrity', 'codex_tool_not_allowlisted');
-        const validation = tool.schema.safeParse(call.arguments);
+        const validation = codexToolSchema(tool).safeParse(call.arguments);
         if (!validation.success || !isDeepStrictEqual(validation.data, call.arguments)) {
           throw new CodexModelPortError('integrity', 'codex_tool_arguments_invalid');
         }
