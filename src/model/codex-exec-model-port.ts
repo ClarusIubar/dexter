@@ -45,6 +45,14 @@ export class CodexModelPortError extends Error {
   }
 }
 
+/** The parent sandbox is inherited across exec and denies all descendant creation. */
+export function containedCodexCommand(platform: NodeJS.Platform, binaryPath: string, args: readonly string[]) {
+  if (platform !== 'darwin') {
+    throw new CodexModelPortError('readiness', 'codex_process_containment_unavailable');
+  }
+  return { executable: '/usr/bin/sandbox-exec', args: ['-p', '(version 1)(allow default)(deny process-fork)', binaryPath, ...args] };
+}
+
 const SAFE_ENV_KEYS = [
   'PATH',
   'HOME',
@@ -156,6 +164,7 @@ export class CodexExecModelPort implements AgentModelPort {
     readonly model: string;
     readonly signal?: AbortSignal;
   }): Promise<{ response: AIMessage; usage?: TokenUsage }> {
+    containedCodexCommand(process.platform, this.options.binaryPath, []);
     await mkdir(this.options.workRoot, { recursive: true });
     await this.verifyBinary();
     if (input.signal?.aborted) throw new Error('Codex ModelPort request was cancelled');
@@ -213,7 +222,8 @@ export class CodexExecModelPort implements AgentModelPort {
         if (actual.toLowerCase() !== this.options.expectedBinarySha256.toLowerCase()) {
           throw new CodexModelPortError('readiness', 'codex_binary_hash_mismatch');
         }
-        const auth = spawnSync(this.options.binaryPath, ['login', 'status'], {
+        const command = containedCodexCommand(process.platform, this.options.binaryPath, ['login', 'status']);
+        const auth = spawnSync(command.executable, command.args, {
           cwd: this.options.workRoot, encoding: 'utf8', timeout: CODEX_AUTH_TIMEOUT_MS,
           env: safeCodexEnvironment(this.options.workRoot), stdio: ['ignore', 'pipe', 'pipe'],
         });
@@ -257,8 +267,9 @@ export class CodexExecModelPort implements AgentModelPort {
     const maxOutputBytes = this.options.maxOutputBytes ?? 4 * 1024 * 1024;
 
     return new Promise<ReturnType<CodexExecEventAccumulator['result']>>((resolvePromise, reject) => {
-      const child = spawn(this.options.binaryPath, args, {
-      cwd: requestDirectory,
+      const command = containedCodexCommand(process.platform, this.options.binaryPath, args);
+      const child = spawn(command.executable, command.args, {
+        cwd: requestDirectory,
         env: safeCodexEnvironment(requestDirectory),
         stdio: ['pipe', 'pipe', 'pipe'],
       });

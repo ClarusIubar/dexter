@@ -5,16 +5,18 @@ import { afterAll, expect, test } from 'bun:test';
 import { AIMessage, HumanMessage, ToolMessage } from '@langchain/core/messages';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { CodexExecModelPort, CodexModelPortError } from './codex-exec-model-port.ts';
+import { CodexExecModelPort, CodexModelPortError, containedCodexCommand } from './codex-exec-model-port.ts';
 
 const TEMP_ROOT = path.resolve('.tmp-exp001-model-port-tests');
 afterAll(() => rmSync(TEMP_ROOT, { recursive: true, force: true }));
 
-function fixture(execBody: string, maxOutputBytes = 128) {
+const macTest = test.skipIf(process.platform !== 'darwin');
+
+function fixture(execBody: string, maxOutputBytes = 128, authBody = '') {
   mkdirSync(TEMP_ROOT, { recursive: true });
   const root = mkdtempSync(path.join(TEMP_ROOT, 'case-'));
   const binaryPath = path.join(root, 'fake-codex');
-  const binary = `#!${process.execPath}\nif (process.argv.slice(2).join(' ') === 'login status') {\n  process.stdout.write('Logged in using ChatGPT\\n');\n  process.exit(0);\n}\n${execBody}\n`;
+  const binary = `#!${process.execPath}\nif (process.argv.slice(2).join(' ') === 'login status') {\n  ${authBody}\n  process.stdout.write('Logged in using ChatGPT\\n');\n  process.exit(0);\n}\n${execBody}\n`;
   writeFileSync(binaryPath, binary, { mode: 0o700 });
   chmodSync(binaryPath, 0o700);
   const workRoot = path.join(root, 'work-root-not-created-yet');
@@ -24,7 +26,7 @@ function fixture(execBody: string, maxOutputBytes = 128) {
   return { root, binaryPath, workRoot, port, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
-test('creates a new work root before checking ChatGPT authentication', async () => {
+macTest('creates a new work root before checking ChatGPT authentication', async () => {
   const f = fixture('process.exit(0);');
   try {
     let failure: unknown;
@@ -36,7 +38,7 @@ test('creates a new work root before checking ChatGPT authentication', async () 
   } finally { f.cleanup(); }
 });
 
-test('prompt write failure is reported even when the child emits a valid response', async () => {
+macTest('prompt write failure is reported even when the child emits a valid response', async () => {
   const events = [
     { type: 'thread.started', thread_id: 'thread-1' },
     { type: 'turn.started' },
@@ -55,7 +57,7 @@ test('prompt write failure is reported even when the child emits a valid respons
   } finally { f.cleanup(); }
 });
 
-test('integrity failure stays primary when a later output chunk exceeds the limit', async () => {
+macTest('integrity failure stays primary when a later output chunk exceeds the limit', async () => {
   const body = `process.on('SIGTERM', () => {});\nprocess.stdout.write('{"type":"item.started","item":{"type":"command_execution"}}\\n', () => {\n  setTimeout(() => process.stdout.write('x'.repeat(1024)), 100);\n});\nsetInterval(() => {}, 1000);`;
   const f = fixture(body);
   try {
@@ -68,7 +70,7 @@ test('integrity failure stays primary when a later output chunk exceeds the limi
 });
 
 
-test('serializes the Agent tool conversation and validates returned Zod arguments', async () => {
+macTest('serializes the Agent tool conversation and validates returned Zod arguments', async () => {
   const output = { kind: 'tool_calls', content: null, tool_calls: [
     { id: 'next-call', name: 'frozen.lookup', arguments: JSON.stringify({ ticker: 'AAPL' }) },
   ] };
@@ -98,7 +100,7 @@ test('serializes the Agent tool conversation and validates returned Zod argument
   } finally { f.cleanup(); }
 });
 
-test('rejects a non-Zod tool schema before executing a model request', async () => {
+macTest('rejects a non-Zod tool schema before executing a model request', async () => {
   const f = fixture('process.exit(99);');
   const tool = new DynamicStructuredTool({ name: 'json.lookup', description: 'Unsupported schema',
     schema: { type: 'object', properties: { ticker: { type: 'string' } } } as const, func: async () => 'unused' });
@@ -109,4 +111,43 @@ test('rejects a non-Zod tool schema before executing a model request', async () 
     expect((failure as CodexModelPortError).kind).toBe('integrity');
     expect((failure as Error).message).toBe('codex_tool_schema_invalid');
   } finally { f.cleanup(); }
+});
+
+
+test('containment command fixes the native sandbox and refuses unsupported platforms', () => {
+  for (const args of [['login', 'status'], ['exec', '--json']]) {
+    expect(containedCodexCommand('darwin', '/pinned/native-codex', args)).toEqual({
+      executable: '/usr/bin/sandbox-exec',
+      args: ['-p', '(version 1)(allow default)(deny process-fork)', '/pinned/native-codex', ...args],
+    });
+  }
+  for (const platform of ['linux', 'win32', 'freebsd'] as const) {
+    expect(() => containedCodexCommand(platform, '/pinned/native-codex', [])).toThrow('codex_process_containment_unavailable');
+  }
+});
+
+for (const detached of [false, true]) {
+  macTest(`denies ${detached ? 'detached' : 'inherited-stdio'} descendants during auth and exec`, async () => {
+    // A spawned process would exit successfully; EPERM must be observed at BOTH entry points.
+    const attempt = `const { spawnSync } = require('node:child_process');
+      const result = spawnSync(process.execPath, ['-e', 'process.exit(0)'], { detached: ${detached}, stdio: ${detached ? "'ignore'" : "'inherit'"} });
+      if (!result.error || result.error.code !== 'EPERM') process.exit(98);`;
+    const events = [
+      { type: 'thread.started', thread_id: 'contained' }, { type: 'turn.started' },
+      { type: 'item.completed', item: { type: 'agent_message', text: '{"kind":"final","content":"contained","tool_calls":null}' } },
+      { type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 } },
+    ].map((event) => JSON.stringify(event)).join('\n') + '\n';
+    const f = fixture(`${attempt}
+process.stdin.resume(); process.stdin.on('end', () => process.stdout.write(${JSON.stringify(events)}));`, 4096, attempt);
+    try {
+      const result = await f.port.invoke({ messages: [], tools: [], model: 'gpt-6-sol' });
+      expect(result.response.content).toBe('contained');
+    } finally { f.cleanup(); }
+  });
+}
+
+test.skipIf(process.platform === 'darwin')('ModelPort fails closed before filesystem or authentication on unsupported hosts', async () => {
+  const port = new CodexExecModelPort({ binaryPath: '/nonexistent-codex', expectedBinarySha256: 'a'.repeat(64),
+    workRoot: '/nonexistent-work-root', timeoutMs: 100, reasoningEffort: 'low' });
+  await expect(port.invoke({ messages: [], tools: [], model: 'gpt-6-sol' })).rejects.toThrow('codex_process_containment_unavailable');
 });
