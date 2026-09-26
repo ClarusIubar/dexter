@@ -18,7 +18,7 @@ export const MAX_TURN_RESULT_CHARS = 200_000;
  *
  * Returns the original array if already under budget.
  */
-export function enforceResultBudget(toolMessages: ToolMessage[]): ToolMessage[] {
+export function enforceResultBudget(toolMessages: ToolMessage[], exemptToolNames: ReadonlySet<string> = new Set()): ToolMessage[] {
   const totalChars = toolMessages.reduce((sum, tm) => {
     const content = typeof tm.content === 'string' ? tm.content : JSON.stringify(tm.content);
     return sum + content.length;
@@ -34,7 +34,7 @@ export function enforceResultBudget(toolMessages: ToolMessage[]): ToolMessage[] 
     tm,
     content: typeof tm.content === 'string' ? tm.content : JSON.stringify(tm.content),
   }));
-  const bySize = [...indexed].sort((a, b) => b.content.length - a.content.length);
+  const bySize = indexed.filter(({ tm }) => !exemptToolNames.has(tm.name ?? '')).sort((a, b) => b.content.length - a.content.length);
 
   let remaining = totalChars;
   const toPersist = new Set<number>();

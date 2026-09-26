@@ -2,6 +2,8 @@ import type { GroupContext } from './prompts.js';
 import type { MessageQueue } from '../utils/message-queue.js';
 import type { Question, UserAnswers } from '../tools/ask-user-question/types.js';
 import type { PermissionDecision } from '../permissions/types.js';
+import type { AIMessage, BaseMessage } from '@langchain/core/messages';
+import type { StructuredToolInterface } from '@langchain/core/tools';
 
 // ============================================================================
 // Channel Profiles
@@ -36,6 +38,19 @@ export interface ChannelProfile {
  * - 'deny': reject and immediately end the agent's turn
  */
 export type ApprovalDecision = 'allow-once' | 'allow-session' | 'allow-always' | 'deny';
+
+/**
+ * Model-call boundary used by the original Agent loop.
+ * Implementations return a response; Agent retains tool execution and turn control.
+ */
+export interface AgentModelPort {
+  invoke(input: {
+    messages: BaseMessage[];
+    tools: StructuredToolInterface[];
+    model: string;
+    signal?: AbortSignal;
+  }): Promise<{ response: AIMessage; usage?: TokenUsage }>;
+}
 
 /**
  * Agent configuration
@@ -75,6 +90,17 @@ export interface AgentConfig {
    * matching tools are bound. Used to give a delegated worker a focused toolset.
    */
   toolAllowlist?: string[];
+  /**
+   * Additional request-scoped tools. They require an explicit toolAllowlist and
+   * are appended only when their names are present in that allowlist.
+   */
+  additionalTools?: StructuredToolInterface[];
+  /** Preserve bounded, allowlisted tool results verbatim for isolated model-port runs. */
+  untruncatedToolResults?: string[];
+  /** Request-scoped tools that may run without interactive approval. */
+  trustedToolNames?: string[];
+  /** Optional model-call adapter; the Agent continues to own its multi-turn loop. */
+  modelPort?: AgentModelPort;
   /**
    * Use this exact system prompt instead of building one. When set, the soul,
    * rules, and memory context are skipped entirely. Used by delegated workers

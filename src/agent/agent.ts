@@ -9,7 +9,7 @@ import { estimateTokens, getAutoCompactThreshold, KEEP_TOOL_USES } from '../util
 import { exceedsSizeCap, persistLargeResult, buildPersistedContent } from '../utils/tool-result-storage.js';
 import { enforceResultBudget } from '../utils/tool-result-budget.js';
 import { formatUserFacingError, isContextOverflowError } from '../utils/errors.js';
-import type { AgentConfig, AgentEvent, CompactionEvent, ContextClearedEvent, MicrocompactEvent, QueueDrainEvent, StreamMode, StreamProgressEvent, TokenUsage } from '../agent/types.js';
+import type { AgentConfig, AgentEvent, AgentModelPort, CompactionEvent, ContextClearedEvent, MicrocompactEvent, QueueDrainEvent, StreamMode, StreamProgressEvent, TokenUsage } from '../agent/types.js';
 import type { MessageQueue } from '../utils/message-queue.js';
 import { compactContext, MAX_CONSECUTIVE_COMPACTION_FAILURES, MIN_TOOL_RESULTS_FOR_COMPACTION } from './compact.js';
 import { microcompactMessages } from './microcompact.js';
@@ -41,11 +41,13 @@ export class Agent {
   private readonly model: string;
   private readonly maxIterations: number;
   private readonly tools: StructuredToolInterface[];
+  private readonly modelPort?: AgentModelPort;
   private readonly toolMap: Map<string, StructuredToolInterface>;
   private readonly toolExecutor: AgentToolExecutor;
   private readonly systemPrompt: string;
   private readonly signal?: AbortSignal;
   private readonly memoryEnabled: boolean;
+  private readonly untruncatedToolResults: Set<string>;
   private readonly messageQueue?: MessageQueue;
   private compactionFailures: number = 0;
 
@@ -58,6 +60,7 @@ export class Agent {
     this.model = config.model ?? DEFAULT_MODEL;
     this.maxIterations = config.maxIterations ?? DEFAULT_MAX_ITERATIONS;
     this.tools = tools;
+    this.modelPort = config.modelPort;
     this.toolMap = new Map(tools.map(t => [t.name, t]));
     this.toolExecutor = new AgentToolExecutor(
       this.toolMap,
@@ -67,19 +70,58 @@ export class Agent {
       config.sessionApprovedTools,
       undefined,
       config.requestUserInput,
+      new Set(config.trustedToolNames ?? []),
     );
     this.systemPrompt = systemPrompt;
     this.signal = config.signal;
     this.memoryEnabled = config.memoryEnabled ?? true;
+    this.untruncatedToolResults = new Set(config.untruncatedToolResults ?? []);
     this.messageQueue = config.messageQueue;
   }
 
   static async create(config: AgentConfig = {}): Promise<Agent> {
+    if (config.modelPort && (!config.toolAllowlist || !config.systemPromptOverride
+      || config.memoryEnabled !== false || !Number.isInteger(config.maxIterations)
+      || (config.maxIterations ?? 0) < 1)) {
+      throw new Error('A custom Agent model port requires an explicit prompt, tool allowlist, memory-off setting, and turn budget');
+    }
+    if ((config.untruncatedToolResults?.length ?? 0) > 0
+      && (!config.modelPort || !config.toolAllowlist
+        || config.untruncatedToolResults!.some((name) => !config.toolAllowlist!.includes(name)))) {
+      throw new Error('Untruncated tool results require an allowlisted custom model port');
+    }
+    if ((config.trustedToolNames?.length ?? 0) > 0
+      && (!config.modelPort || !config.toolAllowlist || !config.additionalTools
+        || config.trustedToolNames!.some((name) => !config.toolAllowlist!.includes(name)
+          || !config.additionalTools!.some((tool) => tool.name === name)))) {
+      throw new Error('Trusted tools require a request-scoped allowlisted model port tool');
+    }
     const model = config.model ?? DEFAULT_MODEL;
     const allTools = getTools(model);
-    let tools = config.toolAllowlist
-      ? allTools.filter(t => config.toolAllowlist!.includes(t.name))
+    const allowedNames = config.toolAllowlist ? new Set(config.toolAllowlist) : null;
+    let tools = allowedNames
+      ? allTools.filter(t => allowedNames.has(t.name))
       : allTools;
+    if (config.additionalTools?.length) {
+      if (!allowedNames) {
+        throw new Error('Additional Agent tools require an explicit toolAllowlist');
+      }
+      const registeredNames = new Set(tools.map((tool) => tool.name));
+      for (const tool of config.additionalTools) {
+        if (!allowedNames.has(tool.name)) {
+          throw new Error('An additional Agent tool was not present in toolAllowlist');
+        }
+        if (registeredNames.has(tool.name)) {
+          throw new Error('An additional Agent tool duplicated a registered tool');
+        }
+        registeredNames.add(tool.name);
+        tools.push(tool);
+      }
+      const missingNames = [...allowedNames].filter((name) => !registeredNames.has(name));
+      if (missingNames.length > 0) {
+        throw new Error('An allowlisted Agent tool was not registered');
+      }
+    }
     // CLI-only tools (interactive prompts) are dropped on non-CLI channels
     // (WhatsApp/gateway) and in headless runs, where there is no user at a keyboard.
     const isCli = !config.channel || config.channel === 'cli';
@@ -226,7 +268,7 @@ export class Agent {
       // Cap large results (persist to disk, inject preview)
       toolMessages = toolMessages.map(tm => {
         const content = typeof tm.content === 'string' ? tm.content : JSON.stringify(tm.content);
-        if (exceedsSizeCap(content)) {
+        if (!this.untruncatedToolResults.has(tm.name ?? '') && exceedsSizeCap(content)) {
           const { preview, filePath } = persistLargeResult(tm.name ?? 'unknown', tm.tool_call_id, content);
           return new ToolMessage({
             content: buildPersistedContent(filePath, preview, content.length),
@@ -238,7 +280,7 @@ export class Agent {
       });
 
       // Enforce per-turn total budget
-      toolMessages = enforceResultBudget(toolMessages);
+      toolMessages = enforceResultBudget(toolMessages, this.untruncatedToolResults);
 
       messages.push(...toolMessages);
 
@@ -299,6 +341,24 @@ export class Agent {
   private async *callModelWithStreaming(
     messages: BaseMessage[],
   ): AsyncGenerator<StreamProgressEvent, { response: AIMessage; usage?: TokenUsage }> {
+    if (this.modelPort) {
+      yield { type: 'stream_progress', charDelta: 0, mode: 'requesting' };
+      const result = await this.modelPort.invoke({
+        messages,
+        tools: this.tools,
+        model: this.model,
+        signal: this.signal,
+      });
+      const responseText = extractTextContent(result.response) ?? '';
+      if (responseText.length > 0) {
+        yield { type: 'stream_progress', charDelta: responseText.length, mode: 'responding' };
+      }
+      if (hasToolCalls(result.response)) {
+        yield { type: 'stream_progress', charDelta: 0, mode: 'tool-use' };
+      }
+      return { response: result.response, usage: result.usage };
+    }
+
     try {
       return yield* this.streamAndAccumulate(messages);
     } catch {
@@ -366,6 +426,14 @@ export class Agent {
   private async callModelWithMessages(
     messages: BaseMessage[],
   ): Promise<{ response: AIMessage; usage?: TokenUsage }> {
+    if (this.modelPort) {
+      return await this.modelPort.invoke({
+        messages,
+        tools: this.tools,
+        model: this.model,
+        signal: this.signal,
+      });
+    }
     const result = await callLlmWithMessages(messages, {
       model: this.model,
       tools: this.tools,
@@ -573,6 +641,7 @@ export class Agent {
     // Step 1: Memory flush
     const fullToolResults = ctx.scratchpad.getToolResults();
     if (
+      !this.modelPort &&
       this.memoryEnabled &&
       shouldRunMemoryFlush({
         estimatedContextTokens,
@@ -598,6 +667,7 @@ export class Agent {
 
     // Step 2: Compaction
     if (
+      !this.modelPort &&
       this.compactionFailures < MAX_CONSECUTIVE_COMPACTION_FAILURES &&
       ctx.scratchpad.getActiveToolResultCount() >= MIN_TOOL_RESULTS_FOR_COMPACTION
     ) {

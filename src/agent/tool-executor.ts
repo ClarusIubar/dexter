@@ -61,6 +61,7 @@ export class AgentToolExecutor {
     private readonly requestUserInput?: (request: {
       questions: Question[];
     }) => Promise<UserAnswers>,
+    private readonly trustedToolNames: ReadonlySet<string> = new Set(),
   ) {
     this.sessionApprovedTools = sessionApprovedTools ?? new Set();
     this.maxConcurrency = maxConcurrency ?? DEFAULT_MAX_CONCURRENCY;
@@ -138,35 +139,26 @@ export class AgentToolExecutor {
     const toolQuery = this.extractQueryFromArgs(toolArgs);
 
     // Permission gate: the engine decides allow / ask / deny per call.
-    const permission = evaluatePermission({ tool: toolName, args: toolArgs });
-    if (permission.mode === 'deny') {
-      // Denied by rule — never reaches the user (avoids rubber-stamp fatigue).
-      yield { type: 'tool_denied', tool: toolName, args: toolArgs, toolCallId };
-      return;
-    }
-    if (permission.mode === 'ask') {
-      // Commands the engine marks non-cacheable always re-prompt (a prior
-      // allow-session grant can never silently skip them).
-      const cacheable = permission.sessionCacheable !== false;
-      const key = sessionKey(toolName, permission);
-      if (!(cacheable && this.sessionApprovedTools.has(key))) {
-        const decision = (await this.requestToolApproval?.({
-          tool: toolName,
-          args: toolArgs,
-          command: permission.command,
-          decision: permission,
-        })) ?? 'deny';
-        yield { type: 'tool_approval', tool: toolName, args: toolArgs, approved: decision };
-        if (decision === 'deny') {
-          yield { type: 'tool_denied', tool: toolName, args: toolArgs, toolCallId };
-          return;
-        }
-        if (decision === 'allow-session' && cacheable) {
-          this.sessionApprovedTools.add(key);
-        }
-        if (decision === 'allow-always' && permission.proposedRule) {
-          // Persist a permanent allow rule, then run this turn.
-          addRule('allow', permission.proposedRule);
+    if (!this.trustedToolNames.has(toolName)) {
+      const permission = evaluatePermission({ tool: toolName, args: toolArgs });
+      if (permission.mode === 'deny') {
+        yield { type: 'tool_denied', tool: toolName, args: toolArgs, toolCallId };
+        return;
+      }
+      if (permission.mode === 'ask') {
+        const cacheable = permission.sessionCacheable !== false;
+        const key = sessionKey(toolName, permission);
+        if (!(cacheable && this.sessionApprovedTools.has(key))) {
+          const decision = (await this.requestToolApproval?.({
+            tool: toolName, args: toolArgs, command: permission.command, decision: permission,
+          })) ?? 'deny';
+          yield { type: 'tool_approval', tool: toolName, args: toolArgs, approved: decision };
+          if (decision === 'deny') {
+            yield { type: 'tool_denied', tool: toolName, args: toolArgs, toolCallId };
+            return;
+          }
+          if (decision === 'allow-session' && cacheable) this.sessionApprovedTools.add(key);
+          if (decision === 'allow-always' && permission.proposedRule) addRule('allow', permission.proposedRule);
         }
       }
     }

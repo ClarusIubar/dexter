@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:dextergarden:exp001:shared-wire:v2",
+  "title": "EXP-001 Original Dexter Agent and Dexter Core shared wire contract v2",
+  "description": "Line-delimited JSON messages exchanged between the Garden trial runner and the original Dexter Agent process.",
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "sourceCommit": { "type": "string", "pattern": "^([a-f0-9]{40}|[a-f0-9]{64})$" },
+    "input": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": { "const": "exp001_input_v2" },
+        "trialId": { "type": "string", "minLength": 1 },
+        "asOf": { "type": "string", "format": "date-time" },
+        "candidates": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "ticker": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9.-]{0,19}$" },
+              "sector": { "type": "string", "minLength": 1 },
+              "asOf": { "type": "string", "format": "date" },
+              "features": {
+                "type": "object",
+                "properties": {
+                  "price": { "type": "number", "exclusiveMinimum": 0 },
+                  "volume": { "type": ["number", "null"], "minimum": 0 },
+                  "ret20": { "type": "number", "exclusiveMinimum": -1 },
+                  "breakoutRatio": { "type": "number", "exclusiveMinimum": -1 },
+                  "vol20": { "type": "number", "minimum": 0 }
+                },
+                "required": ["price", "volume", "ret20", "breakoutRatio", "vol20"],
+                "additionalProperties": false
+              }
+            },
+            "required": ["ticker", "sector", "asOf", "features"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["schemaVersion", "trialId", "asOf", "candidates"],
+      "additionalProperties": false
+    },
+    "coreDecision": {
+      "type": "object",
+      "properties": {
+        "schemaVersion": { "const": "exp001_arm_decision_v2" },
+        "trialId": { "type": "string", "minLength": 1 },
+        "arm": { "const": "B" },
+        "status": { "enum": ["ranked", "cash"] },
+        "inputHash": { "$ref": "#/$defs/sha256" },
+        "policyHash": { "$ref": "#/$defs/sha256" },
+        "orderedTickers": { "type": "array", "items": { "type": "string" } },
+        "selectedTickers": { "type": "array", "items": { "type": "string" } },
+        "reason": { "type": ["string", "null"] },
+        "dependencyHashes": { "type": "array", "items": { "$ref": "#/$defs/sha256" } },
+        "decisionHash": { "$ref": "#/$defs/sha256" }
+      },
+      "required": ["schemaVersion", "trialId", "arm", "status", "inputHash", "policyHash", "orderedTickers", "selectedTickers", "reason", "dependencyHashes", "decisionHash"],
+      "additionalProperties": false
+    },
+    "start": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "start" },
+        "schemaVersion": { "const": "exp001_shared_wire_v2" },
+        "wireSchemaSha256": { "$ref": "#/$defs/sha256" },
+        "runId": { "type": "string", "minLength": 1 },
+        "trialId": { "type": "string", "minLength": 1 },
+        "arm": { "enum": ["A", "AB"] },
+        "inputHash": { "$ref": "#/$defs/sha256" },
+        "input": { "$ref": "#/$defs/input" },
+        "policyHash": { "$ref": "#/$defs/sha256" },
+        "model": { "type": "string", "minLength": 1 },
+        "reasoningEffort": { "enum": ["low", "medium", "high", "xhigh", "max", "ultra"] },
+        "systemPrompt": { "type": "string", "minLength": 1 },
+        "query": { "type": "string", "minLength": 1 },
+        "deadlineAt": { "type": "string", "format": "date-time" },
+        "maxIterations": { "const": 2 },
+        "codexBinaryPath": { "type": "string", "minLength": 1 },
+        "codexBinarySha256": { "$ref": "#/$defs/sha256" },
+        "codexWorkRoot": { "type": "string", "minLength": 1 },
+        "agentSourceBaseCommit": { "$ref": "#/$defs/sourceCommit" },
+        "agentSourcePatchSha256": { "$ref": "#/$defs/sha256" }
+      },
+      "required": ["type", "schemaVersion", "wireSchemaSha256", "runId", "trialId", "arm", "inputHash", "input", "policyHash", "model", "reasoningEffort", "systemPrompt", "query", "deadlineAt", "maxIterations", "codexBinaryPath", "codexBinarySha256", "codexWorkRoot", "agentSourceBaseCommit", "agentSourcePatchSha256"],
+      "additionalProperties": false
+    },
+    "coreRequest": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "core_request" },
+        "schemaVersion": { "const": "exp001_shared_wire_v2" },
+        "wireSchemaSha256": { "$ref": "#/$defs/sha256" },
+        "runId": { "type": "string", "minLength": 1 },
+        "requestId": { "type": "string", "minLength": 1 },
+        "trialId": { "type": "string", "minLength": 1 },
+        "inputHash": { "$ref": "#/$defs/sha256" }
+      },
+      "required": ["type", "schemaVersion", "wireSchemaSha256", "runId", "requestId", "trialId", "inputHash"],
+      "additionalProperties": false
+    },
+    "coreResponse": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "core_response" },
+        "schemaVersion": { "const": "exp001_shared_wire_v2" },
+        "wireSchemaSha256": { "$ref": "#/$defs/sha256" },
+        "runId": { "type": "string", "minLength": 1 },
+        "requestId": { "type": "string", "minLength": 1 },
+        "trialId": { "type": "string", "minLength": 1 },
+        "inputHash": { "$ref": "#/$defs/sha256" },
+        "decision": { "$ref": "#/$defs/coreDecision" }
+      },
+      "required": ["type", "schemaVersion", "wireSchemaSha256", "runId", "requestId", "trialId", "inputHash", "decision"],
+      "additionalProperties": false
+    },
+    "preference": {
+      "type": "object",
+      "properties": {
+        "ticker": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9.-]{0,19}$" },
+        "score": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "required": ["ticker", "score"],
+      "additionalProperties": false
+    },
+    "modelCall": {
+      "type": "object",
+      "properties": {
+        "ordinal": { "type": "integer", "minimum": 1 },
+        "requestSha256": { "$ref": "#/$defs/sha256" },
+        "inputSnapshotIncluded": { "type": "boolean" },
+        "inputSnapshotSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "coreResultIncluded": { "type": "boolean" },
+        "coreResultSha256": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "inputTokens": { "type": "integer", "minimum": 0 },
+        "outputTokens": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["ordinal", "requestSha256", "inputSnapshotIncluded", "inputSnapshotSha256", "coreResultIncluded", "coreResultSha256", "inputTokens", "outputTokens"],
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "result" },
+        "schemaVersion": { "const": "exp001_shared_wire_v2" },
+        "wireSchemaSha256": { "$ref": "#/$defs/sha256" },
+        "runId": { "type": "string", "minLength": 1 },
+        "trialId": { "type": "string", "minLength": 1 },
+        "arm": { "enum": ["A", "AB"] },
+        "inputHash": { "$ref": "#/$defs/sha256" },
+        "policyHash": { "$ref": "#/$defs/sha256" },
+        "preferences": { "type": "array", "items": { "$ref": "#/$defs/preference" } },
+        "coreDecisionHash": { "type": ["string", "null"], "pattern": "^[a-f0-9]{64}$" },
+        "coreToolCallCount": { "type": "integer", "minimum": 0 },
+        "modelCalls": { "type": "array", "items": { "$ref": "#/$defs/modelCall" } },
+        "toolNames": { "type": "array", "items": { "type": "string" } },
+        "sourceBaseCommit": { "$ref": "#/$defs/sourceCommit" },
+        "sourcePatchSha256": { "$ref": "#/$defs/sha256" },
+        "usage": {
+          "type": "object",
+          "properties": {
+            "inputTokens": { "type": "integer", "minimum": 0 },
+            "outputTokens": { "type": "integer", "minimum": 0 },
+            "totalTokens": { "type": "integer", "minimum": 0 }
+          },
+          "required": ["inputTokens", "outputTokens", "totalTokens"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["type", "schemaVersion", "wireSchemaSha256", "runId", "trialId", "arm", "inputHash", "policyHash", "preferences", "coreDecisionHash", "coreToolCallCount", "modelCalls", "toolNames", "sourceBaseCommit", "sourcePatchSha256", "usage"],
+      "additionalProperties": false
+    },
+    "failure": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "failure" },
+        "schemaVersion": { "const": "exp001_shared_wire_v2" },
+        "wireSchemaSha256": { "$ref": "#/$defs/sha256" },
+        "runId": { "type": "string", "minLength": 1 },
+        "reason": { "enum": ["invalid_request", "deadline_exceeded", "readiness_failed", "model_port_failed", "agent_failed", "invalid_result", "core_rpc_failed"] }
+      },
+      "required": ["type", "schemaVersion", "wireSchemaSha256", "runId", "reason"],
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/start" },
+    { "$ref": "#/$defs/coreRequest" },
+    { "$ref": "#/$defs/coreResponse" },
+    { "$ref": "#/$defs/result" },
+    { "$ref": "#/$defs/failure" }
+  ]
+}
