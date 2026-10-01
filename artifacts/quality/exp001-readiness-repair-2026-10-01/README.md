@@ -6,10 +6,10 @@ ModelPort now drains later lines after a failure, preserving stronger integrity 
 
 ## Evidence tiers
 
-- features.txt/help.txt: contained CLI offline inspection. feature-overrides.txt confirms only the three code-mode features are false, not every native-tool feature.
+- features.txt/help.json: contained CLI offline inspection. feature-overrides.txt confirms only the three code-mode features are false, not every native-tool feature.
 - native-probe.ts/json: diagnostic-only observation, not production acceptance; actual usage11045 input/52 output.
 - production-modelport.ts/json: unmodified production ModelPort invocation after the patch. Exact synthetic final response, observed usage11065/49, native digest unchanged. No prototype accept-wrapper is used.
-- tested-source.diff: exact tracked source/test diff at execution. Base8355984, diff SHA256 b16cf7237eb227d6b1e80064290ad88401c419f8b29a5f85e383099a81873aac. This is paired with the content source identity in the Garden actual A/AB artifact set; do not relabel its measured base as the subsequent commit.
+- tested-source-diff.json: exact tracked source/test diff at execution, encoded as JSON to preserve raw whitespace and byte digest. Base8355984, diff SHA256 b16cf7237eb227d6b1e80064290ad88401c419f8b29a5f85e383099a81873aac. This is paired with the content source identity in the Garden actual A/AB artifact set; do not relabel its measured base as the subsequent commit.
 - development-full-tests.log/evidence.json: directly executed approved-host354 pass/1 Linux-only skip/0 fail. Fake CLI tests; not model execution.
 - development-focused-tests.log and development-typecheck.log: directly executed source-quality evidence. This layer defines no lint/coverage scripts.
 - role-review.json: parent execution, Development source/test execution and Architecture/Red-team independent saved-artifact checks separated. The Red-team focused20-test stdout exists in the thread but has no archived raw log; it must not be called a durable raw test artifact.

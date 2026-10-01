@@ -9,7 +9,7 @@ const expectedBinarySha256='50ac633af64851511f9bbc71032cdae7f1ba20b3234c189687d6
 const sourceBase=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
 const sourceDiff=execFileSync('git',['diff','HEAD','--','src'],{encoding:'utf8'});
 const sourceDiffSha256=createHash('sha256').update(sourceDiff).digest('hex');
-writeFileSync(`${import.meta.dir}/tested-source.diff`,sourceDiff);
+writeFileSync(`${import.meta.dir}/tested-source-diff.json`,JSON.stringify({rawText:sourceDiff,rawSha256:sourceDiffSha256},null,2)+"\n");
 const report: Record<string,unknown>={scope:'Production ModelPort synthetic readiness, no pilot/market',sourceBase,sourceDiffSha256,binarySha256:expectedBinarySha256,model:'gpt-6-sol',reasoningEffort:'medium',startedAt:new Date().toISOString()};
 try{
  const port=new CodexExecModelPort({binaryPath:native,expectedBinarySha256,workRoot:import.meta.dir,timeoutMs:60_000,reasoningEffort:'medium'});
