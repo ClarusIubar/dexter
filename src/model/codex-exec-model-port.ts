@@ -11,6 +11,7 @@ import type { AgentModelPort, TokenUsage } from '../agent/types.js';
 import {
   buildCodexOutputSchema,
   CodexExecEventAccumulator,
+  CodexProtocolError,
   parseCodexModelOutput,
   serializeCodexPrompt,
   type CodexToolSpec,
@@ -186,7 +187,7 @@ export class CodexExecModelPort implements AgentModelPort {
         return {
           response: new AIMessage({
             content: parsed.content,
-            response_metadata: { codexThreadId: result.threadId, modelPort: 'codex_exec_json_v1' },
+            response_metadata: { codexThreadId: result.threadId, modelPort: 'codex_exec_json_v1', diagnostics: result.diagnostics ?? [] },
           }),
           usage: toUsage(result.usage),
         };
@@ -206,7 +207,7 @@ export class CodexExecModelPort implements AgentModelPort {
         response: new AIMessage({
           content: '',
           tool_calls: toolCalls,
-          response_metadata: { codexThreadId: result.threadId, modelPort: 'codex_exec_json_v1' },
+          response_metadata: { codexThreadId: result.threadId, modelPort: 'codex_exec_json_v1', diagnostics: result.diagnostics ?? [] },
         }),
         usage: toUsage(result.usage),
       };
@@ -260,6 +261,7 @@ export class CodexExecModelPort implements AgentModelPort {
       ...DISABLED_CODEX_FEATURES.flatMap((feature) => ['--disable', feature]),
       '--cd', requestDirectory,
       '-c', 'project_doc_max_bytes=0',
+      '-c', 'suppress_unstable_features_warning=true',
       '-c', 'web_search="disabled"',
       '--output-schema', schemaPath,
       '-',
@@ -310,7 +312,7 @@ export class CodexExecModelPort implements AgentModelPort {
       child.stdout.on('data', (chunk: Buffer) => {
         outputBytes += chunk.length;
         if (outputBytes > maxOutputBytes) {
-          stop(new CodexModelPortError('operational', 'codex_output_limit'));
+          stop(new CodexModelPortError('integrity', 'codex_output_limit'));
           return;
         }
         stdoutBuffer += chunk.toString('utf8');
@@ -321,8 +323,7 @@ export class CodexExecModelPort implements AgentModelPort {
           try {
             events.accept(line);
           } catch (error) {
-            stop(new CodexModelPortError('integrity', error instanceof Error ? error.message : 'codex_event_invalid'));
-            return;
+            stop(new CodexModelPortError(error instanceof CodexProtocolError ? error.kind : 'integrity', error instanceof Error ? error.message : 'codex_event_invalid'));
           }
           newline = stdoutBuffer.indexOf('\n');
         }
@@ -339,7 +340,7 @@ export class CodexExecModelPort implements AgentModelPort {
         try {
           if (stdoutBuffer.trim()) events.accept(stdoutBuffer);
         } catch (error) {
-          recordFailure(new CodexModelPortError('integrity', error instanceof Error ? error.message : 'codex_event_tail_invalid'));
+          recordFailure(new CodexModelPortError(error instanceof CodexProtocolError ? error.kind : 'integrity', error instanceof Error ? error.message : 'codex_event_tail_invalid'));
         }
         if (failure) {
           reject(failure);

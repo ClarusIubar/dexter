@@ -34,6 +34,7 @@ export interface CodexExecResult {
   readonly finalText: string;
   readonly threadId: string | null;
   readonly usage: CodexUsage;
+  readonly diagnostics?: readonly string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -167,6 +168,15 @@ function normalizeUsage(value: unknown): CodexUsage | null {
   return { inputTokens: inputTokens as number, outputTokens: outputTokens as number, totalTokens };
 }
 
+export class CodexProtocolError extends Error {
+  constructor(readonly kind: 'readiness' | 'integrity', message: string) {
+    super(message);
+    this.name = 'CodexProtocolError';
+  }
+}
+
+const CODE_MODE_DISABLED_WARNING = 'Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed; enable `features.code_mode_host` and install `codex-code-mode-host`.';
+
 export class CodexExecEventAccumulator {
   private finalText: string | null = null;
   private threadId: string | null = null;
@@ -175,6 +185,7 @@ export class CodexExecEventAccumulator {
   private turnStarted = false;
   private completed = false;
   private finalMessageCount = 0;
+  private startupDiagnosticSeen = false;
 
   accept(line: string): void {
     const trimmed = line.trim();
@@ -204,6 +215,21 @@ export class CodexExecEventAccumulator {
       return;
     }
     if (event.type === 'item.started' || event.type === 'item.updated' || event.type === 'item.completed') {
+      if (isRecord(event.item) && event.item.type === 'error') {
+        if (!this.threadStarted || this.turnStarted || this.completed || this.startupDiagnosticSeen
+          || event.type !== 'item.completed' || Object.keys(event).sort().join(',') !== 'item,type'
+          || Object.keys(event.item).sort().join(',') !== 'id,message,type'
+          || typeof event.item.id !== 'string' || event.item.id.length === 0 || event.item.id.length > 256
+          || typeof event.item.message !== 'string' || event.item.message.length === 0) {
+          throw new CodexProtocolError('integrity', 'codex_startup_diagnostic_invalid');
+        }
+        this.startupDiagnosticSeen = true;
+        if (event.item.message !== CODE_MODE_DISABLED_WARNING) {
+          throw new CodexProtocolError('readiness', 'codex_startup_diagnostic_unrecognized');
+        }
+        return;
+      }
+
       if (!this.turnStarted || this.completed || !isRecord(event.item) || typeof event.item.type !== 'string') {
         throw new Error('Codex emitted an invalid item event');
       }
@@ -238,6 +264,7 @@ export class CodexExecEventAccumulator {
     if (!this.completed || this.finalText === null || this.usage === null) {
       throw new Error('Codex turn did not complete with a response and usage');
     }
-    return { finalText: this.finalText, threadId: this.threadId, usage: this.usage };
+    return { finalText: this.finalText, threadId: this.threadId, usage: this.usage,
+      ...(this.startupDiagnosticSeen ? { diagnostics: ['code_mode_disabled'] } : {}) };
   }
 }

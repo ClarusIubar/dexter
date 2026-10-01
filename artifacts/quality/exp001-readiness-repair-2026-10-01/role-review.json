@@ -1,0 +1,56 @@
+{
+  "evidenceId": "EXP-001-1872-current-native-repair-2026-10-01",
+  "sourceBase": "835598479a90d9c8a3f1a4b878c2b18523bedad8",
+  "testedDiffSha256": "b16cf7237eb227d6b1e80064290ad88401c419f8b29a5f85e383099a81873aac",
+  "nativeVersion": "0.159.2",
+  "nativeSha256": "50ac633af64851511f9bbc71032cdae7f1ba20b3234c189687d61ba846c354c5",
+  "roles": [
+    {
+      "role": "Parent /root",
+      "personallyExecuted": [
+        "contained CLI features/help",
+        "diagnostic native observation",
+        "production ModelPort final/usage",
+        "Garden actual A/AB native tool roundtrip"
+      ],
+      "modelRequestsDuringRepair": 6,
+      "limits": "1 observational +1 production toolfree +4 actual arm calls; no pilot/model-retry sample"
+    },
+    {
+      "role": "Development /root/development",
+      "personallyExecuted": [
+        "compatibility source patch",
+        "full Bun354/1/0",
+        "focused32/1/0",
+        "semantic typecheck"
+      ],
+      "modelRequests": 0,
+      "fullLog": "development-full-tests.log"
+    },
+    {
+      "role": "Architecture /root/architecture",
+      "personallyExecuted": [
+        "saved wire/report canonical hash and treatment identity inspection"
+      ],
+      "modelRequests": 0,
+      "verdict": "30-candidate synthetic native compatibility accepted; full pool, durable runner recovery and settlement remain separate"
+    },
+    {
+      "role": "Red-team /root/redteam",
+      "personallyExecuted": [
+        "protocol20/0 test",
+        "saved wire/decision hash replay via Garden guards",
+        "source identity equality"
+      ],
+      "modelRequests": 0,
+      "rawProtocolTestLog": "Not archived; direct execution tool output is in this thread",
+      "verdict": "No remaining P1/P2 in patch scope; exact diagnostic acceptance only; output limit failclosed repaired"
+    }
+  ],
+  "limits": [
+    "No model efficacy or pilot acceptance",
+    "No Linux support/file-network isolation proof",
+    "Original repository defines no lint/coverage gate",
+    "Historical pre-repair failures and unavailable usage remain preserved"
+  ]
+}

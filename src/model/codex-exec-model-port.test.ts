@@ -76,12 +76,14 @@ macTest('serializes the Agent tool conversation and validates returned Zod argum
   ] };
   const events = [
     { type: 'thread.started', thread_id: 'thread-tools' },
+    { type: 'item.completed', item: { id: 'startup-1', type: 'error', message: 'Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed; enable `features.code_mode_host` and install `codex-code-mode-host`.' } },
     { type: 'turn.started' },
     { type: 'item.completed', item: { type: 'agent_message', text: JSON.stringify(output) } },
     { type: 'turn.completed', usage: { input_tokens: 3, output_tokens: 2, total_tokens: 5 } },
   ].map((event) => JSON.stringify(event)).join('\n') + '\n';
   const f = fixture(`let prompt = ''; process.stdin.on('data', chunk => { prompt += chunk; });
     process.stdin.on('end', () => {
+      if (!process.argv.includes('suppress_unstable_features_warning=true')) process.exit(3);
       const messages = JSON.parse(prompt).messages;
       if (messages[0].role !== 'user' || messages[1].toolCalls[0].id !== 'prior-call'
         || messages[2].toolCallId !== 'prior-call' || messages[2].content !== 'frozen result') process.exit(2);
@@ -97,6 +99,7 @@ macTest('serializes the Agent tool conversation and validates returned Zod argum
     ] });
     expect(result.response.tool_calls).toEqual([{ id: 'next-call', name: 'frozen.lookup', args: { ticker: 'AAPL' }, type: 'tool_call' }]);
     expect(result.usage).toEqual({ inputTokens: 3, outputTokens: 2, totalTokens: 5 });
+    expect(result.response.response_metadata.diagnostics).toEqual(['code_mode_disabled']);
   } finally { f.cleanup(); }
 });
 
@@ -150,4 +153,34 @@ test.skipIf(process.platform === 'darwin')('ModelPort fails closed before filesy
   const port = new CodexExecModelPort({ binaryPath: '/nonexistent-codex', expectedBinarySha256: 'a'.repeat(64),
     workRoot: '/nonexistent-work-root', timeoutMs: 100, reasoningEffort: 'low' });
   await expect(port.invoke({ messages: [], tools: [], model: 'gpt-6-sol' })).rejects.toThrow('codex_process_containment_unavailable');
+});
+
+
+for (const [name, tail, kind, reason] of [
+  ['unknown startup alone', '', 'readiness', 'codex_startup_diagnostic_unrecognized'],
+  ['native action after readiness', '{"type":"turn.started"}\n{"type":"item.started","item":{"type":"command_execution"}}\n', 'integrity', 'non-message action'],
+  ['malformed EOF after readiness', '{broken', 'integrity', 'malformed JSONL'],
+] as const) {
+  macTest(`drains startup failure and remaining stream: ${name}`, async () => {
+    const stream = JSON.stringify({ type: 'thread.started', thread_id: 'fixture' }) + '\n'
+      + JSON.stringify({ type: 'item.completed', item: { id: 'notice', type: 'error', message: 'unknown configuration failure' } }) + '\n' + tail;
+    const f = fixture(`process.stdin.resume(); process.stdin.on('end', () => process.stdout.write(${JSON.stringify(stream)}));`, 4096);
+    try {
+      let failure: unknown;
+      try { await f.port.invoke({ messages: [], tools: [], model: 'gpt-6-sol' }); } catch (error) { failure = error; }
+      expect(failure).toBeInstanceOf(CodexModelPortError);
+      expect((failure as CodexModelPortError).kind).toBe(kind);
+      expect((failure as Error).message).toContain(reason);
+    } finally { f.cleanup(); }
+  });
+}
+macTest('output limit is integrity when the unparsed crossing chunk could hide a native action', async () => {
+  const stream = ' '.repeat(512) + '{"type":"item.started","item":{"type":"command_execution"}}\n';
+  const f = fixture(`process.stdin.resume(); process.stdin.on('end', () => process.stdout.write(${JSON.stringify(stream)}));`, 128);
+  try {
+    let failure: unknown;
+    try { await f.port.invoke({ messages: [], tools: [], model: 'gpt-6-sol' }); } catch (error) { failure = error; }
+    expect((failure as CodexModelPortError).kind).toBe('integrity');
+    expect((failure as Error).message).toBe('codex_output_limit');
+  } finally { f.cleanup(); }
 });

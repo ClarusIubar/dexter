@@ -1,0 +1,26 @@
+{
+  "scope": "Production ModelPort synthetic readiness, no pilot/market",
+  "sourceBase": "835598479a90d9c8a3f1a4b878c2b18523bedad8",
+  "sourceDiffSha256": "b16cf7237eb227d6b1e80064290ad88401c419f8b29a5f85e383099a81873aac",
+  "binarySha256": "50ac633af64851511f9bbc71032cdae7f1ba20b3234c189687d61ba846c354c5",
+  "model": "gpt-6-sol",
+  "reasoningEffort": "medium",
+  "startedAt": "2026-10-01T09:31:26.736Z",
+  "status": "completed",
+  "exactExpectedContent": true,
+  "usage": {
+    "inputTokens": 11065,
+    "outputTokens": 49,
+    "totalTokens": 11114
+  },
+  "usageStatus": "observed",
+  "metadata": {
+    "codexThreadId": "01a0f6cd-f2e9-7a81-b221-674a6ffb356c",
+    "modelPort": "codex_exec_json_v1",
+    "diagnostics": [
+      "code_mode_disabled"
+    ]
+  },
+  "finishedAt": "2026-10-01T09:31:32.390Z",
+  "binaryDigestStillMatches": true
+}

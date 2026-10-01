@@ -1,0 +1,17 @@
+{
+  "README.md": "a79e061f50e0510ace918674b7e2451e7d5584769fb17190e667fe35e63e1892",
+  "development-focused-tests.log": "068a7c5b33835b04edd1b7e6f5031e3e587bb1125f9b5c4cb0f11b6d27c177b8",
+  "development-full-tests.evidence.json": "d6c6d0e5664f2c639d7ac878e6a01ec449b048aea97bcf1f2699a416f09aad50",
+  "development-full-tests.log": "3a4c3eb871afd9d9d198a3c6e163e517a12a7ce8f53fa3490db50b152945a69c",
+  "development-typecheck.log": "8366207267355d3e3d5bf3bf6e8c94c5f93f6078c34f08973fa2b38cdda6cc92",
+  "feature-overrides.txt": "82ff59233b3cb5ff928e6a5b72f024a22a0c37b70412ea3907ef50c67cf0d07d",
+  "features.txt": "54a4cc0385e3fd7023b549934f84bd9e879f2681d273306fa882a1de22e8d6ac",
+  "help.txt": "0e82cfde0122715250e93dc65866caa956b2ac5b9d0b20ec4ad4f9e81486509e",
+  "native-probe.json": "3c6f0b65537d47ad004f174108c06a81e80c807f89726afdbecc0462b491e267",
+  "native-probe.ts": "7695bd86b655010fb7031cac6d10cadaa37a4eb94ac59983eee5f03a0dadc8b4",
+  "probe.schema.json": "888985653303a2c54bb377e41ca1de45aac17eff343f939c5b7640dfccdc35ed",
+  "production-modelport.json": "101d1f621a39635f0e8e20d1c21e4a98051b7c4a4cc382556ad529ead0fe5786",
+  "production-modelport.ts": "23aba102c681e562e36adb9260e60b30005688ddb069c58618316c666ac85404",
+  "role-review.json": "38d6b448d7907a89ea3397590758bef0d848c89fc0a41d3645f1036372f342c9",
+  "tested-source.diff": "b16cf7237eb227d6b1e80064290ad88401c419f8b29a5f85e383099a81873aac"
+}

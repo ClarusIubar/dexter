@@ -1,0 +1,40 @@
+{
+  "actor": "Development /root/development",
+  "personallyExecuted": true,
+  "scope": "Fake Codex regression suite; not live ModelPort/pilot acceptance",
+  "cwd": "/Volumes/PortableSSD/github/dexter_garden/.worktrees/original-dexter-exp-001",
+  "baseCommit": "835598479a90d9c8a3f1a4b878c2b18523bedad8",
+  "sourceState": "uncommitted four-file compatibility patch over base",
+  "trackedDiffSha256": "b16cf7237eb227d6b1e80064290ad88401c419f8b29a5f85e383099a81873aac",
+  "filesSha256": {
+    "src/agent/codex-exec-protocol.ts": "3815521121a47f9e70ba7213143bdc38a6df6472c6ca3cd091785dd8e00baab5",
+    "src/model/codex-exec-model-port.ts": "dbc14d6b79b893bd5e1272d91f5e4c5adcd816722c04ecfbe803eb1f2feee2ad",
+    "src/agent/codex-exec-protocol.test.ts": "ca1502648ba896a4fd8bec7e460d4f19be1a9dbf01bc93f562678cee4b700357",
+    "src/model/codex-exec-model-port.test.ts": "b5543cfc7c33208b4357040e1c794ea37693020d80e8796457ded9f54003542b"
+  },
+  "command": ".exp001-tools/bun test > artifacts/quality/compatibility-full-tests.log 2>&1",
+  "environment": {
+    "os": "Darwin arm64",
+    "bun": "1.4.2",
+    "execution": "Approved host execution via exec_command require_escalated; nested sandbox-exec fixture tests need host sandbox capability",
+    "noLiveModelCalls": true
+  },
+  "exitCode": 0,
+  "result": {
+    "passed": 354,
+    "skipped": 1,
+    "failed": 0,
+    "assertions": 594,
+    "files": 28
+  },
+  "skip": "Linux-only actual ModelPort fail-closed invocation",
+  "originalLog": "/Volumes/PortableSSD/github/dexter_garden/.worktrees/original-dexter-exp-001/artifacts/quality/compatibility-full-tests.log",
+  "preservedLog": "/Volumes/PortableSSD/github/dexter_garden/.worktrees/original-dexter-exp-001/artifacts/quality/exp001-readiness-repair-2026-10-01/development-full-tests.log",
+  "logSha256": "3a4c3eb871afd9d9d198a3c6e163e517a12a7ce8f53fa3490db50b152945a69c",
+  "preservation": "Byte-for-byte copy of existing original log; no rerun",
+  "limits": [
+    "No real model readiness claim",
+    "No Linux runtime verification",
+    "No Original lint or coverage gate claim"
+  ]
+}

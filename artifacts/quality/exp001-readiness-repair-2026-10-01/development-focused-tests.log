@@ -1,0 +1,47 @@
+bun test v1.4.2 (744846f84)
+
+src/agent/codex-exec-protocol.test.ts:
+(pass) Codex model-port protocol > builds a final-only schema when no tools are available [0.10ms]
+(pass) Codex model-port protocol > uses one strict envelope and binds calls to exact allowlisted names [0.12ms]
+(pass) Codex model-port protocol > serializes the exact conversation and allowed tool set [0.14ms]
+(pass) Codex model-port protocol > parses a final response without coercing prose or extra fields [0.58ms]
+(pass) Codex model-port protocol > accepts only unique calls to allowlisted tools with object arguments [0.36ms]
+(pass) Codex model-port protocol > captures the agent message and usage and rejects native command execution [0.31ms]
+(pass) accepts only the observed once-only startup notice and preserves diagnostic code with usage [0.13ms]
+(pass) startup notice fails closed: unknown [0.11ms]
+(pass) startup notice fails closed: empty id [0.03ms]
+(pass) startup notice fails closed: oversized id [0.03ms]
+(pass) startup notice fails closed: extra item key [0.02ms]
+(pass) startup notice fails closed: extra event key [0.02ms]
+(pass) startup notice fails closed: wrong event [0.03ms]
+(pass) startup notice rejected before thread [0.06ms]
+(pass) startup notice rejected duplicate [0.03ms]
+(pass) startup notice rejected in turn [0.02ms]
+(pass) startup notice rejected after completion [0.05ms]
+(pass) startup warning cannot authorize unsafe tail {"type":"item.started","item":{"type":"command_execution"}} [0.08ms]
+(pass) startup warning cannot authorize unsafe tail {"type":"turn.started","type":"turn.started"} [0.04ms]
+(pass) startup warning cannot authorize unsafe tail {broken [0.02ms]
+
+src/model/codex-exec-model-port.test.ts:
+(pass) creates a new work root before checking ChatGPT authentication [153.91ms]
+(pass) prompt write failure is reported even when the child emits a valid response [135.32ms]
+(pass) integrity failure stays primary when a later output chunk exceeds the limit [2125.94ms]
+(pass) serializes the Agent tool conversation and validates returned Zod arguments [136.05ms]
+(pass) rejects a non-Zod tool schema before executing a model request [90.82ms]
+(pass) containment command fixes the native sandbox and refuses unsupported platforms [0.12ms]
+(pass) denies inherited-stdio descendants during auth and exec [134.98ms]
+(pass) denies detached descendants during auth and exec [129.67ms]
+(skip) ModelPort fails closed before filesystem or authentication on unsupported hosts
+(pass) drains startup failure and remaining stream: unknown startup alone [122.51ms]
+(pass) drains startup failure and remaining stream: native action after readiness [121.53ms]
+(pass) drains startup failure and remaining stream: malformed EOF after readiness [127.52ms]
+(pass) output limit is integrity when the unparsed crossing chunk could hide a native action [121.70ms]
+
+1 tests skipped:
+(skip) ModelPort fails closed before filesystem or authentication on unsupported hosts
+
+ 32 pass
+ 1 skip
+ 0 fail
+ 78 expect() calls
+Ran 33 tests across 2 files. [3.58s]

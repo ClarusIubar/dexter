@@ -1,0 +1,1 @@
+{"type":"object","properties":{"kind":{"type":"string","enum":["final"]},"content":{"type":["string","null"]},"tool_calls":{"type":"null"}},"required":["kind","content","tool_calls"],"additionalProperties":false}
