@@ -1,0 +1,26 @@
+{
+  "checkedDateKst": "2026-10-01",
+  "evidenceId": "EXP-001-1872-modelport-compatibility-2026-10-01",
+  "sourceCommit": "102a446ce5caac3f3860e5d0cb7d3d012277ef57",
+  "binaryPath": "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+  "binarySha256": "50ac633af64851511f9bbc71032cdae7f1ba20b3234c189687d61ba846c354c5",
+  "model": "gpt-6-sol",
+  "reasoningEffort": "medium",
+  "startedAt": "2026-10-01T09:10:11.319Z",
+  "scope": "Synthetic tool-free readiness request; not an A/B/AB trial or pilot observation",
+  "environment": "macOS approved host execution",
+  "diagnosticTimeoutMs": 60000,
+  "tools": [],
+  "status": "failed",
+  "failureKind": "integrity",
+  "failureMessage": "Codex emitted an invalid item event",
+  "usageStatus": "unavailable",
+  "usage": null,
+  "finishedAt": "2026-10-01T09:10:11.947Z",
+  "elapsedMs": 628,
+  "nonConclusions": [
+    "No pilot registration or market data",
+    "No efficacy or architecture winner",
+    "No Linux readiness proof"
+  ]
+}

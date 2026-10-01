@@ -1,0 +1,38 @@
+{
+  "checked_date_kst": "2026-10-01",
+  "scope": "readiness only; no model or market request",
+  "source_commit": "102a446ce5caac3f3860e5d0cb7d3d012277ef57",
+  "evidence_branch_head": "c60c9f5c278f85bedd97c164a66c85a6573f46f3",
+  "binary_path": "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+  "binary_sha256": "50ac633af64851511f9bbc71032cdae7f1ba20b3234c189687d61ba846c354c5",
+  "platform": "darwin",
+  "containment_policy": "(version 1)(allow default)(deny process-fork)",
+  "results": {
+    "version": {
+      "exit_code": 0,
+      "version": "codex-cli 0.159.2"
+    },
+    "auth": {
+      "exit_code": 0,
+      "auth_route": "chatgpt"
+    },
+    "exec_help": {
+      "exit_code": 0,
+      "required_options": {
+        "--ignore-user-config": true,
+        "--ephemeral": true,
+        "--output-schema": true,
+        "--sandbox": true,
+        "--json": true,
+        "--skip-git-repo-check": true
+      }
+    },
+    "features_policy": {
+      "exit_code": 2,
+      "policy_flags_accepted": false,
+      "failure_class": "diagnostic_invocation_invalid",
+      "failure_detail": "--ignore-user-config is an exec-only option; rejected features-list diagnostic does not establish ModelPort exec incompatibility",
+      "production_exec_feature_validation": "not_attempted"
+    }
+  }
+}

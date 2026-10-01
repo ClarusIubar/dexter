@@ -1,0 +1,93 @@
+{
+  "checkedDateKst": "2026-10-01",
+  "evidenceId": "EXP-001-1872-modelport-compatibility-2026-10-01",
+  "sourceCommit": "102a446ce5caac3f3860e5d0cb7d3d012277ef57",
+  "binaryPath": "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
+  "binarySha256": "50ac633af64851511f9bbc71032cdae7f1ba20b3234c189687d61ba846c354c5",
+  "model": "gpt-6-sol",
+  "reasoningEffort": "medium",
+  "startedAt": "2026-10-01T09:16:06.148Z",
+  "scope": "Synthetic tool-free readiness request; not an A/B/AB trial or pilot observation",
+  "environment": "macOS approved host execution",
+  "diagnosticTimeoutMs": 60000,
+  "tools": [],
+  "status": "failed",
+  "failureKind": "integrity",
+  "failureMessage": "Codex emitted an invalid item event",
+  "usageStatus": "unavailable",
+  "usage": null,
+  "finishedAt": "2026-10-01T09:16:06.781Z",
+  "diagnosticAttempt": 3,
+  "events": [
+    {
+      "type": "thread.started",
+      "eventKeys": [
+        "type",
+        "thread_id"
+      ],
+      "itemType": null,
+      "itemKeys": null,
+      "itemStatus": null,
+      "textLength": null,
+      "message": null,
+      "itemMessage": null,
+      "errorMessage": null
+    },
+    {
+      "type": "item.completed",
+      "eventKeys": [
+        "type",
+        "item"
+      ],
+      "itemType": "error",
+      "itemKeys": [
+        "id",
+        "type",
+        "message"
+      ],
+      "itemStatus": null,
+      "textLength": null,
+      "message": null,
+      "itemMessage": "Under-development features enabled: skip_host_skill_discovery. Under-development features are incomplete and may behave unpredictably. To suppress this warning, set `suppress_unstable_features_warning = true` in /Users/yuhyohyeon/.codex/config.toml.",
+      "errorMessage": null
+    },
+    {
+      "type": "item.completed",
+      "eventKeys": [
+        "type",
+        "item"
+      ],
+      "itemType": "error",
+      "itemKeys": [
+        "id",
+        "type",
+        "message"
+      ],
+      "itemStatus": null,
+      "textLength": null,
+      "message": null,
+      "itemMessage": "Code Mode is unavailable because code-mode host is disabled. Code mode will fail closed; enable `features.code_mode_host` and install `codex-code-mode-host`.",
+      "errorMessage": null
+    },
+    {
+      "type": "turn.started",
+      "eventKeys": [
+        "type"
+      ],
+      "itemType": null,
+      "itemKeys": null,
+      "itemStatus": null,
+      "textLength": null,
+      "message": null,
+      "itemMessage": null,
+      "errorMessage": null
+    }
+  ],
+  "capturePolicy": "Structural event metadata only; delegate production validation unchanged",
+  "elapsedMs": 633,
+  "nonConclusions": [
+    "No pilot registration or market data",
+    "No efficacy or architecture winner",
+    "No Linux readiness proof"
+  ]
+}
